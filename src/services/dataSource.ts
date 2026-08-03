@@ -64,6 +64,7 @@ export class UKDaleSampleSource implements EnergyDataSource {
   public getLiveControls(onData: (record: EnergyRecord) => void): DataSourceControls {
     this.onDataCallback = onData;
 
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const self = this;
 
     const start = async () => {

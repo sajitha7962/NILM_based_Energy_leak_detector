@@ -10,10 +10,16 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "clsx": "^2.1.1",
+    "framer-motion": "^12.43.0",
+    "i18next": "^26.3.6",
     "lucide-react": "^1.27.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "recharts": "^3.10.1"
+    "react-i18next": "^17.0.11",
+    "recharts": "^3.10.1",
+    "tailwind-merge": "^3.6.0",
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@eslint/js": "^9.13.0",

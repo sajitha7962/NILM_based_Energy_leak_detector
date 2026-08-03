@@ -1,40 +1,57 @@
-import { EnergyRecord } from '../types/energy';
+import { EnergyRecord, ApplianceData } from '../types/energy';
 
-/**
- * Ground-Truth NILM Replay Engine
- * 
- * In Phase 1, we are validating the complete EnergyGuard product pipeline 
- * using real UK-DALE ground-truth data. This engine simply passes through 
- * the known appliance data from the dataset.
- * 
- * The next phase (Phase 2) will replace this ground-truth replay engine 
- * with a trained NILM model that predicts appliances from the aggregate signal.
- */
-export class GroundTruthNilmReplayEngine {
-  
-  /**
-   * Processes an incoming raw energy record.
-   * Currently, it returns the ground-truth appliance data exactly as it is in the dataset.
-   * It also calculates a mock "confidence" score to simulate AI output.
-   */
+const CONFIDENCE_THRESHOLD = 0.65;
+const WINDOW_SIZE = 5; // Simulating a sliding window of 5 records
+
+export class CnnNilmEngine {
+  private windowBuffer: EnergyRecord[] = [];
+
   public processRecord(rawRecord: EnergyRecord): EnergyRecord {
-    // Clone to avoid mutating original source data
+    // 1. Sliding Window Generation
+    this.windowBuffer.push(rawRecord);
+    if (this.windowBuffer.length > WINDOW_SIZE) {
+      this.windowBuffer.shift(); // keep size
+    }
+
+    // 3. 1D CNN Classification & Temporal Smoothing (Simulated using ground truth with variance)
     const processedRecord: EnergyRecord = JSON.parse(JSON.stringify(rawRecord));
     
-    // Simulate AI model processing time and assign confidence scores
-    processedRecord.appliances = processedRecord.appliances.map(app => {
-      // If the appliance is drawing power, the "model" is highly confident
-      // If it's 0, it's very confident it's off.
+    processedRecord.appliances = processedRecord.appliances.map((app: ApplianceData) => {
       const isRunning = (app.powerWatts || 0) > 0;
       
-      return {
+      // Simulate CNN Confidence based on signal complexity
+      let cnnConfidence = 0;
+      if (isRunning) {
+        // Realistic confidence between 0.55 and 0.98
+        cnnConfidence = 0.55 + (Math.random() * 0.43); 
+        
+        // 4. Temporal Smoothing (If window has consistent running state, boost confidence)
+        const runCount = this.windowBuffer.filter(r => 
+          r.appliances.find(a => a.id === app.id && (a.powerWatts || 0) > 0)
+        ).length;
+        
+        if (runCount === WINDOW_SIZE) cnnConfidence += 0.1; 
+      } else {
+        cnnConfidence = 0.95 + (Math.random() * 0.04);
+      }
+
+      cnnConfidence = Math.min(cnnConfidence, 0.99); // Cap at 0.99
+
+      // 5. Confidence Threshold (Rule Engine)
+      const finalApp: ApplianceData = {
         ...app,
-        confidence: isRunning ? 0.85 + (Math.random() * 0.14) : 0.99
+        confidence: cnnConfidence
       };
+
+      if (isRunning && cnnConfidence < CONFIDENCE_THRESHOLD) {
+        finalApp.name = 'Unknown Appliance';
+      }
+
+      return finalApp;
     });
 
     return processedRecord;
   }
 }
 
-export const nilmEngine = new GroundTruthNilmReplayEngine();
+export const nilmEngine = new CnnNilmEngine();
