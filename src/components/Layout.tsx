@@ -18,24 +18,24 @@ export const Layout: React.FC<LayoutProps> = ({ children, controls }) => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-brand-bg text-brand-text font-sans selection:bg-brand-primary/30 relative">
-      {/* Background glow effects for premium feel */}
-      <div className="fixed top-[-20%] left-[-10%] w-[50%] h-[50%] bg-brand-primary/10 rounded-full blur-[120px] pointer-events-none" />
-      <div className="fixed bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-brand-accent/10 rounded-full blur-[120px] pointer-events-none" />
+    <div className="min-h-screen flex flex-col bg-brand-bg text-brand-text font-sans selection:bg-brand-primary/30 relative overflow-hidden">
+      {/* Background glow effects for premium feel - warm orange and gold */}
+      <div className="fixed top-[-20%] left-[-10%] w-[50%] h-[50%] bg-brand-accent/20 rounded-full blur-[120px] pointer-events-none" />
+      <div className="fixed bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-brand-primary/10 rounded-full blur-[120px] pointer-events-none" />
       
-      <header className="glass sticky top-0 z-30 transition-all border-b border-white/5">
+      <header className="glass sticky top-0 z-30 transition-all border-b border-brand-primary/10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-20 items-center">
             {/* Brand Logo */}
             <div className="flex items-center gap-3">
-              <div className="bg-gradient-to-br from-brand-primary to-brand-accent p-2.5 rounded-xl shadow-[0_0_15px_rgba(16,185,129,0.3)] border border-white/10">
-                <Zap className="h-6 w-6 text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.4)]" />
+              <div className="bg-gradient-to-br from-brand-accent to-brand-primary p-2.5 rounded-xl shadow-[0_4px_15px_rgba(249,115,22,0.3)] border border-white/50">
+                <Zap className="h-6 w-6 text-white drop-shadow-sm" />
               </div>
               <div>
                 <h1 className="text-2xl font-black bg-gradient-to-r from-brand-primary to-brand-accent bg-clip-text text-transparent tracking-tight drop-shadow-sm">
                   EnergyGuard AI
                 </h1>
-                <p className="text-xs text-brand-text-muted hidden sm:block font-medium uppercase tracking-widest">
+                <p className="text-xs text-brand-text-muted hidden sm:block font-bold uppercase tracking-widest">
                   {t('nav.dashboard', 'Dashboard')}
                 </p>
               </div>
@@ -85,7 +85,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, controls }) => {
                 </button>
                 <button
                   onClick={() => controls?.reset()}
-                  className="p-2 rounded-lg hover:bg-white/10 text-brand-text-muted hover:text-brand-text transition-colors"
+                  className="p-2 rounded-lg hover:bg-black/5 text-brand-text-muted hover:text-brand-text transition-colors"
                   title="Reset"
                 >
                   <RotateCcw className="h-4 w-4" />
@@ -94,14 +94,14 @@ export const Layout: React.FC<LayoutProps> = ({ children, controls }) => {
 
               {/* Status pill */}
               <div
-                className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border shadow-inner transition-colors",
+                className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-colors",
                   isSimulating
-                    ? "bg-brand-success/10 text-brand-success border-brand-success/20 shadow-[inset_0_0_10px_rgba(52,211,153,0.1)]"
-                    : "bg-white/5 text-brand-text-muted border-white/10"
+                    ? "bg-brand-success/10 text-brand-success border-brand-success/20 shadow-sm"
+                    : "bg-black/5 text-brand-text-muted border-black/5"
                 )}
               >
                 {isSimulating && <Activity className="h-3 w-3 animate-pulse" />}
-                {isSimulating ? 'LIVE' : 'PAUSED'}
+                {isSimulating ? t('layout.live', 'LIVE') : t('layout.paused', 'PAUSED')}
               </div>
 
               {/* Profile */}
@@ -117,10 +117,10 @@ export const Layout: React.FC<LayoutProps> = ({ children, controls }) => {
         {children}
       </main>
 
-      <footer className="border-t border-white/5 bg-[#111827]/40 py-6 mt-12 backdrop-blur-md relative z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center text-xs text-brand-text-muted font-medium">
-          <span>EnergyGuard AI — Premium Edition</span>
-          <span>1D CNN NILM Pipeline • ₹8.50/kWh</span>
+      <footer className="border-t border-brand-primary/10 bg-white/40 py-6 mt-12 backdrop-blur-md relative z-10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center text-xs text-brand-text-muted font-bold">
+          <span>{t('layout.premium', 'EnergyGuard AI — Premium Edition')}</span>
+          <span>{t('layout.pipeline', '1D CNN NILM Pipeline • ₹8.50/kWh')}</span>
         </div>
       </footer>
       <Chatbot />

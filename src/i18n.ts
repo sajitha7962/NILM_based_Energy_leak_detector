@@ -17,15 +17,21 @@ const resources = {
   ml: { translation: mlTranslation },
 };
 
+const savedLanguage = localStorage.getItem('energyGuardLanguage') || 'en';
+
 i18n
   .use(initReactI18next)
   .init({
     resources,
-    lng: 'en', // default language
+    lng: savedLanguage, // use persisted language or default
     fallbackLng: 'en',
     interpolation: {
       escapeValue: false, // react already safes from xss
     },
   });
+
+i18n.on('languageChanged', (lng) => {
+  localStorage.setItem('energyGuardLanguage', lng);
+});
 
 export default i18n;
