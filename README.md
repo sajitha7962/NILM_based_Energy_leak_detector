@@ -25,11 +25,13 @@ FastAPI Backend
     ↓
 Feature Extraction (rolling window)
     ↓
-Random Forest ML Model
+Hybrid ML Ensemble:
+    ├─ Random Forest (NILM Appliance Disaggregation)
+    └─ Isolation Forest (Unsupervised Energy Leak & Anomaly Detection)
     ↓
-LED_Bulb prediction + confidence
+Live Prediction + Confidence + IF Anomaly Score (0.0 - 1.0)
     ↓
-SSE stream
+SSE stream (/api/stream)
     ↓
 React EnergyGuard Dashboard
 ```
@@ -40,12 +42,13 @@ The project uses a combined dataset located in `public/data/combined/`.
 - **UK-DALE**: Historical real-world data from House 1.
 - **Synthetic LED Bulb**: A synthesized dataset representing a Halonix Astron Plus 9W LED bulb.
 
-> **Important:** The current model accuracy is **98.18% accuracy — synthetic-data test split**.
-> This does NOT represent real-world validated accuracy. Real ESP32 sensor data has not yet been used to establish model performance.
+## ML Training (Hybrid Ensemble)
 
-## ML Training
+The hybrid ML pipeline trains two synergistic models on 5-sample electrical rolling features (`mean_power`, `std_power`, `min_power`, `max_power`, `power_change`, `current_change`, `voltage`, etc.):
+1. **Random Forest Classifier**: Supervised NILM disaggregation predicting active appliance classes (`LED_Bulb`, `Fridge`, `Dishwasher`, `Washing Machine`, etc.) and classification confidence.
+2. **Isolation Forest (`contamination=0.05`, `n_estimators=100`)**: Unsupervised anomaly detection learning typical operational boundaries to detect power surges, voltage anomalies, compressor cycle deviations, and standby energy leaks in real-time.
 
-The Random Forest model is trained on this combined dataset, using a rolling window to extract 5-sample electrical features (`mean_power`, `std_power`, `power_change`, etc.). The trained model and metadata are saved to `backend/model.pkl` and `backend/model_info.json`.
+Both models and evaluation metadata are bundled and saved to `backend/model.pkl` and `backend/model_info.json`.
 
 ## Setup & Running
 

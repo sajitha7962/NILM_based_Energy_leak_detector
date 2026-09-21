@@ -35,6 +35,32 @@ export class AnomalyDetector {
       history.push(currentPower);
       if (history.length > 20) history.shift();
 
+      // 0. Direct ML Isolation Forest Detection from backend
+      if (app.isAnomaly || (app.isolationForestScore !== undefined && app.isolationForestScore >= 0.65)) {
+        const existing = this.alerts.find(a => a.applianceId === app.id && (new Date(timestamp).getTime() - new Date(a.timestamp).getTime() < 60000));
+        if (!existing) {
+          const score = app.isolationForestScore ?? 0.85;
+          const severity = score >= 0.8 ? 'critical' : 'warning';
+          const alertType: AnomalyAlert['type'] = currentPower > 15 ? 'Power Spike' : 'Energy Drift';
+          newAlerts.push({
+            id: Math.random().toString(36).substr(2, 9),
+            applianceId: app.id,
+            applianceName: app.name,
+            type: alertType,
+            severity,
+            message: app.anomalyReason || `${app.name} anomaly detected by Isolation Forest.`,
+            timestamp,
+            value: currentPower,
+            confidence: Math.round((app.confidence || 0.9) * 100),
+            isolationForestScore: score,
+            reason: app.anomalyReason || `Isolation Forest flagged abnormal energy divergence with score ${score}.`,
+            recommendation: `Check ${app.name} for energy leakage or power irregularities.`
+          });
+          app.healthStatus = severity;
+          app.anomalyType = alertType;
+        }
+      }
+
       // 1. Detect Power Spikes with XAI
       if (history.length > 5) {
         const avgRecent = history.slice(0, -1).reduce((a,b)=>a+b,0) / (history.length - 1);
@@ -42,7 +68,7 @@ export class AnomalyDetector {
         if (app.name === 'LED_Bulb' && currentPower > 15) {
            const existing = this.alerts.find(a => a.applianceId === app.id && a.type === 'Power Spike' && (new Date(timestamp).getTime() - new Date(a.timestamp).getTime() < 60000));
            if (!existing) {
-             const score = 0.92 + Math.random() * 0.05;
+             const score = app.isolationForestScore !== undefined ? app.isolationForestScore : Number((0.92 + Math.random() * 0.05).toFixed(2));
              newAlerts.push({
                id: Math.random().toString(36).substr(2, 9),
                applianceId: app.id,
@@ -53,7 +79,7 @@ export class AnomalyDetector {
                timestamp,
                value: currentPower,
                confidence: Math.round((app.confidence || 0.9) * 100),
-               isolationForestScore: Number(score.toFixed(2)),
+               isolationForestScore: score,
                reason: `Possible abnormal consumption detected. Expected ~9W.`,
                recommendation: `Check bulb for malfunction or voltage surge.`
              });

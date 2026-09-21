@@ -114,13 +114,34 @@ def test_api_sensor_endpoint():
     assert resp.status_code == 200
     assert resp.json()["status"] == "ok"
     
-    # We don't assert exactly "LED_Bulb" here in case the model isn't trained yet or random weights differ slightly,
-    # but we assert it returns a prediction string and confidence float.
-    assert "prediction" in resp.json()
-    assert isinstance(resp.json()["confidence"], float)
+    data = resp.json()
+    assert "prediction" in data
+    assert isinstance(data["confidence"], float)
+    assert "isolation_forest_score" in data
+    assert isinstance(data["isolation_forest_score"], float)
+    assert "is_anomaly" in data
+    assert isinstance(data["is_anomaly"], bool)
+
+def test_isolation_forest_anomaly_detection():
+    # Send abnormal spike reading
+    resp = client.post("/api/sensor", json={
+        "voltage": 230.1,
+        "current": 2.5,
+        "power": 575.0, # Massive spike for LED line
+        "energy": 0.005,
+        "timestamp": "2026-09-19T21:35:00Z",
+        "source": "ESP32"
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "isolation_forest_score" in data
+    assert data["isolation_forest_score"] >= 0.5
 
 def test_health_endpoint():
     resp = client.get("/api/health")
     assert resp.status_code == 200
     assert resp.json()["status"] == "ok"
     assert "model_loaded" in resp.json()
+    assert "models_loaded" in resp.json()
+    assert resp.json()["models_loaded"]["isolation_forest"] is True
+

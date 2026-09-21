@@ -5,6 +5,9 @@ export interface ApplianceData {
   energyKwh?: number;
   baselinePowerWatts?: number;
   anomalyScore?: number;
+  isolationForestScore?: number;
+  isAnomaly?: boolean;
+  anomalyReason?: string;
   anomalyType?: string;
   healthStatus?: 'healthy' | 'warning' | 'critical';
   confidence?: number;
@@ -16,6 +19,9 @@ export interface EnergyRecord {
   dataSource?: string;
   aggregatePowerWatts?: number;
   aggregateEnergyKwh?: number;
+  isolationForestScore?: number;
+  isAnomaly?: boolean;
+  anomalyReason?: string;
   appliances: ApplianceData[];
   voltage?: number;
   current?: number;

@@ -1,5 +1,7 @@
 {
-  "model": "Random Forest",
+  "model": "Random Forest + Isolation Forest (Hybrid Ensemble)",
+  "classifier": "Random Forest",
+  "anomaly_detector": "Isolation Forest",
   "dataset": "UK-DALE + synthetic LED bulb",
   "evaluation_type": "time_based_test_split",
   "classes": 10,
@@ -8,7 +10,10 @@
   "precision_macro": 100.0,
   "recall_macro": 100.0,
   "f1_macro": 100.0,
-  "last_trained": "2026-09-20",
+  "contamination_rate": 0.05,
+  "if_estimators": 100,
+  "anomaly_rate_test": 4.591836734693878,
+  "last_trained": "2026-09-21",
   "total_samples": 5211,
   "led_bulb_samples": 1500
 }

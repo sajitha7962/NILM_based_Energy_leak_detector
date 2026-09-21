@@ -2,7 +2,7 @@ import os
 import json
 import pandas as pd
 import numpy as np
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import RandomForestClassifier, IsolationForest
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 import joblib
 from datetime import datetime
@@ -72,17 +72,18 @@ def train():
     
     print(f"Train samples: {len(X_train)}, Val samples: {len(X_val)}, Test samples: {len(X_test)}")
     
-    print("Training Random Forest Classifier on Train set...")
-    model = RandomForestClassifier(n_estimators=100, random_state=42)
-    model.fit(X_train, y_train)
+    # 1. Train Random Forest Classifier (Supervised NILM Disaggregation)
+    print("\n--- Model 1: Training Random Forest Classifier (NILM Disaggregation) ---")
+    rf_model = RandomForestClassifier(n_estimators=100, random_state=42)
+    rf_model.fit(X_train, y_train)
     
-    print("Validating model on Validation set...")
-    val_pred = model.predict(X_val)
+    print("Validating Random Forest on Validation set...")
+    val_pred = rf_model.predict(X_val)
     val_acc = accuracy_score(y_val, val_pred)
     print(f"Validation Accuracy: {val_acc * 100:.2f}%")
     
-    print("Evaluating model on Test set...")
-    y_pred = model.predict(X_test)
+    print("Evaluating Random Forest on Test set...")
+    y_pred = rf_model.predict(X_test)
     test_acc = accuracy_score(y_test, y_pred)
     print(f"Test Accuracy: {test_acc * 100:.2f}%")
     
@@ -91,26 +92,48 @@ def train():
     print(classification_report(y_test, y_pred, zero_division=0))
     
     print("\nConfusion Matrix (Test Set):")
-    cm = confusion_matrix(y_test, y_pred, labels=model.classes_)
-    cm_df = pd.DataFrame(cm, index=model.classes_, columns=model.classes_)
+    cm = confusion_matrix(y_test, y_pred, labels=rf_model.classes_)
+    cm_df = pd.DataFrame(cm, index=rf_model.classes_, columns=rf_model.classes_)
     print(cm_df)
     
-    # Save the model
+    # 2. Train Isolation Forest (Unsupervised Energy Leak & Anomaly Detection)
+    print("\n--- Model 2: Training Isolation Forest (Energy Leak & Anomaly Detection) ---")
+    contamination = 0.05
+    if_model = IsolationForest(n_estimators=100, contamination=contamination, random_state=42)
+    if_model.fit(X_train)
+    
+    if_test_pred = if_model.predict(X_test)
+    anomaly_rate = float(np.mean(if_test_pred == -1) * 100)
+    print(f"Isolation Forest test anomaly rate: {anomaly_rate:.2f}% (Expected ~{contamination*100:.1f}%)")
+    
+    # Save the dual-model ensemble bundle
+    bundle = {
+        'classifier': rf_model,
+        'anomaly_detector': if_model,
+        'feature_cols': feature_cols,
+        'classes': list(rf_model.classes_)
+    }
+    
     model_path = os.path.join(MODEL_DIR, 'model.pkl')
-    joblib.dump(model, model_path)
-    print(f"\nModel saved to {model_path}")
+    joblib.dump(bundle, model_path)
+    print(f"\nCombined model ensemble saved to {model_path}")
     
     # Save model metadata
     model_info = {
-        'model': 'Random Forest',
+        'model': 'Random Forest + Isolation Forest (Hybrid Ensemble)',
+        'classifier': 'Random Forest',
+        'anomaly_detector': 'Isolation Forest',
         'dataset': 'UK-DALE + synthetic LED bulb',
         'evaluation_type': 'time_based_test_split',
-        'classes': int(len(model.classes_)),
+        'classes': int(len(rf_model.classes_)),
         'features': len(feature_cols),
         'accuracy': float(test_acc * 100),
         'precision_macro': float(report['macro avg']['precision'] * 100),
         'recall_macro': float(report['macro avg']['recall'] * 100),
         'f1_macro': float(report['macro avg']['f1-score'] * 100),
+        'contamination_rate': contamination,
+        'if_estimators': 100,
+        'anomaly_rate_test': anomaly_rate,
         'last_trained': datetime.now().strftime('%Y-%m-%d'),
         'total_samples': int(len(df)),
         'led_bulb_samples': int(len(df[df['appliance'] == 'LED_Bulb']))

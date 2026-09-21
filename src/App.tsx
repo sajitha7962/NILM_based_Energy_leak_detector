@@ -449,7 +449,7 @@ export default function App() {
           <h3 className="text-lg font-black text-brand-text mb-4">{t('model.cnnTitle', 'NILM Appliance Classifier')}</h3>
           <ul className="space-y-3 text-sm font-medium text-brand-text/80">
             <li className="flex justify-between"><span className="text-brand-text/50">{t('model.status', 'Status')}</span> <span className="text-brand-success font-bold flex items-center"><CheckCircle2 className="h-4 w-4 mr-1"/> {t('model.active', 'Active')}</span></li>
-            <li className="flex justify-between"><span className="text-brand-text/50">Model Type</span> <span className="font-bold">{modelInfo ? modelInfo.model : 'Random Forest'}</span></li>
+            <li className="flex justify-between"><span className="text-brand-text/50">Model Type</span> <span className="font-bold">{modelInfo?.classifier || 'Random Forest'}</span></li>
             <li className="flex flex-col gap-1 py-1">
                <div className="flex justify-between"><span className="text-brand-text/50">Accuracy</span> <span className="font-bold text-brand-primary">{modelInfo ? `${modelInfo.accuracy.toFixed(2)}%` : '...'}</span></div>
                {modelInfo && <div className="text-right text-[10px] text-brand-primary/80 font-bold italic">{modelInfo.accuracy.toFixed(2)}% accuracy — synthetic-data test split</div>}
@@ -467,9 +467,10 @@ export default function App() {
           <h3 className="text-lg font-black text-brand-text mb-4">{t('model.ifTitle', 'Isolation Forest (Anomalies)')}</h3>
           <ul className="space-y-3 text-sm font-medium text-brand-text/80">
             <li className="flex justify-between"><span className="text-brand-text/50">{t('model.status', 'Status')}</span> <span className="text-brand-success font-bold flex items-center"><CheckCircle2 className="h-4 w-4 mr-1"/> {t('model.active', 'Active')}</span></li>
-            <li className="flex justify-between"><span className="text-brand-text/50">{t('model.contamination', 'Contamination Rate')}</span> <span className="font-bold">0.05</span></li>
-            <li className="flex justify-between"><span className="text-brand-text/50">{t('model.estimators', 'Estimators')}</span> <span className="font-bold">100</span></li>
-            <li className="flex justify-between"><span className="text-brand-text/50">{t('model.fpr', 'False Positive Rate')}</span> <span className="font-bold">&lt; 2%</span></li>
+            <li className="flex justify-between"><span className="text-brand-text/50">Model Type</span> <span className="font-bold">{modelInfo?.anomaly_detector || 'Isolation Forest'}</span></li>
+            <li className="flex justify-between"><span className="text-brand-text/50">{t('model.contamination', 'Contamination Rate')}</span> <span className="font-bold">{modelInfo?.contamination_rate ?? 0.05}</span></li>
+            <li className="flex justify-between"><span className="text-brand-text/50">{t('model.estimators', 'Estimators')}</span> <span className="font-bold">{modelInfo?.if_estimators ?? 100}</span></li>
+            <li className="flex justify-between"><span className="text-brand-text/50">Test Anomaly Rate</span> <span className="font-bold">{modelInfo?.anomaly_rate_test ? `${modelInfo.anomaly_rate_test.toFixed(2)}%` : '< 5%'}</span></li>
             <li className="flex justify-between"><span className="text-brand-text/50">{t('model.xai', 'XAI Subsystem')}</span> <span className="font-bold">{t('model.enabled', 'Enabled')}</span></li>
           </ul>
         </div>

@@ -25,12 +25,23 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BASE_DIR, 'model.pkl')
 INFO_PATH = os.path.join(BASE_DIR, 'model_info.json')
 
-# Load model
+# Load models (Random Forest + Isolation Forest ensemble)
+rf_model = None
+if_model = None
+
 if os.path.exists(MODEL_PATH):
-    model = joblib.load(MODEL_PATH)
+    loaded = joblib.load(MODEL_PATH)
+    if isinstance(loaded, dict) and 'classifier' in loaded:
+        rf_model = loaded['classifier']
+        if_model = loaded.get('anomaly_detector')
+    else:
+        # Fallback if raw model was loaded
+        rf_model = loaded
+        if_model = None
+    print(f"Models loaded — Classifier: {rf_model is not None}, Isolation Forest: {if_model is not None}")
 else:
-    model = None
     print("Warning: model.pkl not found!")
+model = rf_model  # alias for backward compatibility
 
 # A queue to hold live predictions for SSE
 prediction_queues = []
@@ -120,18 +131,39 @@ async def receive_sensor_data(reading: SensorReading):
     prediction = "Unknown"
     confidence = 0.0
     status = "ok"
+    is_anomaly = False
+    isolation_forest_score = 0.0
+    anomaly_reason = None
     
     if len(sensor_buffer) < 5:
         status = "warming_up"
         
-    if model is not None and len(sensor_buffer) >= 2:
+    if rf_model is not None and len(sensor_buffer) >= 2:
         features = extract_live_features(sensor_buffer)
         if features is not None:
-            pred = model.predict(features)[0]
-            probs = model.predict_proba(features)[0]
+            # 1. Random Forest Classifier
+            pred = rf_model.predict(features)[0]
+            probs = rf_model.predict_proba(features)[0]
             conf = max(probs)
-            prediction = pred
+            prediction = str(pred)
             confidence = float(conf)
+            
+            # 2. Isolation Forest Anomaly Detection
+            if if_model is not None:
+                raw_score = float(if_model.decision_function(features)[0])
+                if_flag = int(if_model.predict(features)[0])  # -1 = anomaly, 1 = normal
+                # Sigmoid scaling around decision boundary (0.0): higher score = higher anomaly likelihood
+                scaled_score = 1.0 / (1.0 + np.exp(raw_score * 10.0))
+                isolation_forest_score = round(float(scaled_score), 2)
+                is_anomaly = (if_flag == -1) or (isolation_forest_score >= 0.65)
+                
+                if is_anomaly:
+                    if reading.power > 15.0 and prediction == "LED_Bulb":
+                        anomaly_reason = f"LED_Bulb power spike ({reading.power:.1f}W > rated 9W)."
+                    elif isolation_forest_score >= 0.8:
+                        anomaly_reason = f"Severe baseline divergence detected by Isolation Forest (Score: {isolation_forest_score})."
+                    else:
+                        anomaly_reason = f"Unusual electrical load signature detected (Score: {isolation_forest_score})."
             
     # Format the payload for the React frontend (matching EnergyRecord)
     payload = {
@@ -141,17 +173,27 @@ async def receive_sensor_data(reading: SensorReading):
         "voltage": reading.voltage,
         "current": reading.current,
         "energy": reading.energy,
+        "isolationForestScore": isolation_forest_score,
+        "isAnomaly": is_anomaly,
+        "anomalyReason": anomaly_reason,
         "appliances": []
     }
     
     if prediction not in ["Unknown", "OFF"] and reading.power > 0.5:
         app_id = f"{reading.source.lower()}_{prediction.lower().replace(' ', '_')}"
-        payload["appliances"].append({
+        app_item = {
             "id": app_id,
             "name": prediction,
             "powerWatts": reading.power,
-            "confidence": confidence
-        })
+            "confidence": confidence,
+            "isolationForestScore": isolation_forest_score,
+            "isAnomaly": is_anomaly,
+            "healthStatus": "critical" if (is_anomaly and isolation_forest_score >= 0.8) else ("warning" if is_anomaly else "normal")
+        }
+        if anomaly_reason:
+            app_item["anomalyType"] = "Power Spike" if reading.power > 15 else "Energy Drift"
+            app_item["anomalyReason"] = anomaly_reason
+        payload["appliances"].append(app_item)
     
     # Push to all SSE clients
     for q in prediction_queues:
@@ -161,6 +203,9 @@ async def receive_sensor_data(reading: SensorReading):
         "status": status,
         "prediction": prediction,
         "confidence": confidence,
+        "is_anomaly": is_anomaly,
+        "isolation_forest_score": isolation_forest_score,
+        "anomaly_reason": anomaly_reason,
         "voltage": reading.voltage,
         "current": reading.current,
         "power": reading.power,
@@ -205,7 +250,12 @@ def get_health():
             
     return {
         "status": "ok",
-        "model_loaded": model is not None,
+        "models_loaded": {
+            "random_forest": rf_model is not None,
+            "isolation_forest": if_model is not None
+        },
+        "model_loaded": rf_model is not None,
+        "model_type": model_info.get("model", "Random Forest + Isolation Forest"),
         "model_version": model_info.get("last_trained", "unknown"),
         "connected_clients": len(prediction_queues),
         "buffer_size": len(sensor_buffer)
