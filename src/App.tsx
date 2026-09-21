@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { Layout } from './components/Layout';
+import { Login } from './components/Login';
 import { dataSource } from './services/dataSource';
 import { nilmEngine } from './services/nilmEngine';
 import { anomalyDetector, AnomalyAlert } from './services/anomalyDetector';
@@ -29,6 +30,7 @@ type Tab = 'dashboard' | 'appliances' | 'live' | 'alerts' | 'analysis' | 'settin
 
 export default function App() {
   const { t } = useTranslation();
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [liveRecord, setLiveRecord] = useState<EnergyRecord | null>(null);
   const [alerts, setAlerts] = useState<AnomalyAlert[]>([]);
   const [insights, setInsights] = useState<Insight[]>([]);
@@ -39,9 +41,16 @@ export default function App() {
   const [tariff, setTariff] = useState(8.50);
   const controlsRef = useRef<DataSourceControls | null>(null);
   const [, setTick] = useState(0);
+  const [dataSourceMode, setDataSourceMode] = useState<'ukdale' | 'esp32'>('ukdale');
+  const [modelInfo, setModelInfo] = useState<any>(null);
 
   useEffect(() => {
     dataSource.getHistoricalData().then(setHistorical);
+
+    fetch('http://localhost:8000/api/model_status')
+      .then(r => r.json())
+      .then(data => setModelInfo(data))
+      .catch(e => console.error(e));
 
     const controls = dataSource.getLiveControls((raw) => {
       const processed = nilmEngine.processRecord(raw);
@@ -122,9 +131,21 @@ export default function App() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 glass-card p-6">
-          <h3 className="text-base font-bold text-brand-text flex items-center mb-4">
-            <Activity className="h-5 w-5 mr-2 text-brand-primary" /> {t('dashboard.livePower', 'Live Aggregate Power')}
-          </h3>
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-base font-bold text-brand-text flex items-center">
+              <Activity className="h-5 w-5 mr-2 text-brand-primary" /> {t('dashboard.livePower', 'Live Aggregate Power')}
+            </h3>
+            {dataSourceMode === 'esp32' && (
+              <div className={cn("px-2 py-1 text-[10px] uppercase font-bold rounded-full border shadow-sm", 
+                liveRecord?.connectionState === 'connected' ? 'bg-green-50 text-green-700 border-green-200' :
+                liveRecord?.connectionState === 'warming_up' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
+                'bg-red-50 text-red-700 border-red-200'
+              )}>
+                {liveRecord?.connectionState === 'connected' ? 'ESP32 LIVE' :
+                 liveRecord?.connectionState === 'warming_up' ? 'Warming Up...' : 'ESP32 / Backend Disconnected'}
+              </div>
+            )}
+          </div>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData}>
@@ -241,6 +262,18 @@ export default function App() {
                   <span className="text-brand-text-muted font-semibold">{t('appliances.powerDraw', 'Power Draw')}</span>
                   <span className={cn("font-black", on ? "text-brand-primary" : "text-brand-text-muted")}>{app.powerWatts} W</span>
                 </div>
+                {dataSourceMode === 'esp32' && liveRecord?.voltage !== undefined && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-brand-text-muted font-semibold">Voltage</span>
+                    <span className={cn("font-bold", on ? "text-brand-text" : "text-brand-text-muted")}>{liveRecord.voltage} V</span>
+                  </div>
+                )}
+                {dataSourceMode === 'esp32' && liveRecord?.current !== undefined && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-brand-text-muted font-semibold">Current</span>
+                    <span className={cn("font-bold", on ? "text-brand-text" : "text-brand-text-muted")}>{liveRecord.current} A</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-sm">
                   <span className="text-brand-text-muted font-semibold">{t('appliances.monthlyEst', 'Monthly Est.')}</span>
                   <span className="font-bold text-brand-text">₹{((app.powerWatts ?? 0) / 1000 * 24 * 30 * tariff).toFixed(0)}</span>
@@ -273,7 +306,7 @@ export default function App() {
           </h2>
           <div className="flex items-center gap-3 text-xs">
             <span className="bg-white/60 text-brand-primary px-3 py-1.5 rounded-lg font-bold border border-brand-primary/20 shadow-sm">
-              {t('live.dataset', 'Dataset: UK-DALE Sample')}
+              Dataset: {dataSourceMode === 'esp32' ? 'ESP32 Live Sensor' : 'UK-DALE Sample'}
             </span>
           </div>
         </div>
@@ -413,13 +446,20 @@ export default function App() {
       
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="glass-card p-6 border-l-4 border-l-brand-primary">
-          <h3 className="text-lg font-black text-brand-text mb-4">{t('model.cnnTitle', '1D CNN Classifier')}</h3>
+          <h3 className="text-lg font-black text-brand-text mb-4">{t('model.cnnTitle', 'NILM Appliance Classifier')}</h3>
           <ul className="space-y-3 text-sm font-medium text-brand-text/80">
             <li className="flex justify-between"><span className="text-brand-text/50">{t('model.status', 'Status')}</span> <span className="text-brand-success font-bold flex items-center"><CheckCircle2 className="h-4 w-4 mr-1"/> {t('model.active', 'Active')}</span></li>
-            <li className="flex justify-between"><span className="text-brand-text/50">{t('model.inferenceTime', 'Inference Time')}</span> <span className="font-bold">12ms</span></li>
-            <li className="flex justify-between"><span className="text-brand-text/50">{t('model.accuracy', 'Accuracy')}</span> <span className="font-bold">96.4%</span></li>
-            <li className="flex justify-between"><span className="text-brand-text/50">{t('model.windowSize', 'Window Size')}</span> <span className="font-bold">60 seconds</span></li>
-            <li className="flex justify-between"><span className="text-brand-text/50">{t('model.modelVersion', 'Model Version')}</span> <span className="font-bold">v2.4.1 (Quantized)</span></li>
+            <li className="flex justify-between"><span className="text-brand-text/50">Model Type</span> <span className="font-bold">{modelInfo ? modelInfo.model : 'Random Forest'}</span></li>
+            <li className="flex flex-col gap-1 py-1">
+               <div className="flex justify-between"><span className="text-brand-text/50">Accuracy</span> <span className="font-bold text-brand-primary">{modelInfo ? `${modelInfo.accuracy.toFixed(2)}%` : '...'}</span></div>
+               {modelInfo && <div className="text-right text-[10px] text-brand-primary/80 font-bold italic">{modelInfo.accuracy.toFixed(2)}% accuracy — synthetic-data test split</div>}
+            </li>
+            <li className="flex justify-between"><span className="text-brand-text/50">Precision (Macro)</span> <span className="font-bold">{modelInfo && modelInfo.precision_macro ? `${modelInfo.precision_macro.toFixed(2)}%` : '...'}</span></li>
+            <li className="flex justify-between"><span className="text-brand-text/50">Recall (Macro)</span> <span className="font-bold">{modelInfo && modelInfo.recall_macro ? `${modelInfo.recall_macro.toFixed(2)}%` : '...'}</span></li>
+            <li className="flex justify-between"><span className="text-brand-text/50">F1-Score</span> <span className="font-bold">{modelInfo && modelInfo.f1_macro ? `${modelInfo.f1_macro.toFixed(2)}%` : '...'}</span></li>
+            <li className="flex justify-between"><span className="text-brand-text/50">Training Samples</span> <span className="font-bold">{modelInfo ? modelInfo.total_samples : '...'}</span></li>
+            <li className="flex justify-between"><span className="text-brand-text/50">LED Bulb Samples</span> <span className="font-bold text-brand-accent">{modelInfo ? modelInfo.led_bulb_samples : '...'}</span></li>
+            <li className="flex justify-between"><span className="text-brand-text/50">Last Trained</span> <span className="font-bold">{modelInfo ? modelInfo.last_trained : '...'}</span></li>
           </ul>
         </div>
         
@@ -477,25 +517,52 @@ export default function App() {
     </motion.div>
   );
 
+  const toggleMode = (mode: 'ukdale' | 'esp32') => {
+    dataSource.setMode(mode);
+    setDataSourceMode(mode);
+  };
+
+  if (!isAuthenticated) {
+    return <Login onLogin={() => setIsAuthenticated(true)} />;
+  }
+
   return (
     <Layout controls={controlsRef.current}>
-      {/* Tabs */}
-      <div className="mb-8 overflow-x-auto">
-        <nav className="flex gap-2 p-1.5 bg-brand-primary/5 rounded-2xl w-fit border border-brand-primary/10">
-          {tabs.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setActiveTab(t.key)}
-              className={cn("whitespace-nowrap py-2.5 px-6 rounded-xl text-sm font-bold transition-all", 
-                activeTab === t.key
-                  ? "bg-white text-brand-primary shadow-sm ring-1 ring-black/5"
-                  : "text-brand-text/60 hover:text-brand-text hover:bg-white/50"
-              )}
-            >
-              {t.label}
-            </button>
-          ))}
-        </nav>
+      <div className="flex justify-between items-center mb-8 flex-wrap gap-4">
+        {/* Tabs */}
+        <div className="overflow-x-auto">
+          <nav className="flex gap-2 p-1.5 bg-brand-primary/5 rounded-2xl w-fit border border-brand-primary/10">
+            {tabs.map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setActiveTab(t.key)}
+                className={cn("whitespace-nowrap py-2.5 px-6 rounded-xl text-sm font-bold transition-all", 
+                  activeTab === t.key
+                    ? "bg-white text-brand-primary shadow-sm ring-1 ring-black/5"
+                    : "text-brand-text/60 hover:text-brand-text hover:bg-white/50"
+                )}
+              >
+                {t.label}
+              </button>
+            ))}
+          </nav>
+        </div>
+        
+        {/* Mode Toggle */}
+        <div className="flex gap-2 p-1.5 bg-white/40 rounded-2xl border border-black/10 shadow-sm backdrop-blur-sm">
+          <button 
+            onClick={() => toggleMode('ukdale')}
+            className={cn("px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2", dataSourceMode === 'ukdale' ? "bg-white text-brand-primary shadow-sm ring-1 ring-black/5" : "text-brand-text/60 hover:bg-white/50")}
+          >
+            ⚪ DEMO / DATASET MODE
+          </button>
+          <button 
+            onClick={() => toggleMode('esp32')}
+            className={cn("px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2", dataSourceMode === 'esp32' ? "bg-green-100 text-green-700 shadow-sm ring-1 ring-black/5" : "text-brand-text/60 hover:bg-white/50")}
+          >
+            🟢 ESP32 LIVE
+          </button>
+        </div>
       </div>
 
       <AnimatePresence mode="wait">

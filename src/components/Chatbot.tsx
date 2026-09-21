@@ -56,7 +56,7 @@ export const Chatbot = () => {
       };
       setMessages([greeting]);
     }
-  }, []);
+  }, [t]);
 
   // Update greeting when language changes (only if there's exactly 1 greeting message)
   useEffect(() => {

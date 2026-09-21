@@ -1,15 +1,5 @@
 import { EnergyDataSource, EnergyRecord, DataSourceControls } from '../types/energy';
 
-/**
- * UKDaleSampleSource — Phase 1 Data Source
- *
- * Loads pre-processed UK-DALE JSON from /public/data/ and replays it
- * chronologically to simulate a real-time energy monitoring stream.
- *
- * This class is a singleton. It holds a single timer / index so that
- * both Layout (play/pause buttons) and App (data callback) share the
- * same playback state.
- */
 export class UKDaleSampleSource implements EnergyDataSource {
   private liveData: EnergyRecord[] = [];
   private historicalData: EnergyRecord[] = [];
@@ -18,10 +8,7 @@ export class UKDaleSampleSource implements EnergyDataSource {
   private _isPlaying = false;
   private dataReady: Promise<void>;
 
-  // The single registered callback for live data
   private onDataCallback: ((record: EnergyRecord) => void) | null = null;
-
-  // Interval between emitting simulated records (ms)
   private readonly SIMULATION_INTERVAL = 2500;
 
   constructor() {
@@ -36,35 +23,18 @@ export class UKDaleSampleSource implements EnergyDataSource {
       ]);
       this.liveData = await liveRes.json();
       this.historicalData = await histRes.json();
-      console.log(
-        `[EnergyDataSource] Loaded ${this.liveData.length} live records, ` +
-        `${this.historicalData.length} historical records`
-      );
     } catch (error) {
-      console.error('[EnergyDataSource] Failed to load UK-DALE data:', error);
+      console.error('[UKDaleSampleSource] Failed to load data:', error);
     }
   }
-
-  // ------ Historical API ------
 
   public async getHistoricalData(): Promise<EnergyRecord[]> {
     await this.dataReady;
     return this.historicalData;
   }
 
-  // ------ Live Playback API ------
-
-  /**
-   * Register the live-data callback and return playback controls.
-   *
-   * Because this is a singleton, calling getLiveControls a second time
-   * simply *replaces* the callback — it does NOT create a second timer.
-   * This means Layout.tsx and App.tsx can both call this safely.
-   */
   public getLiveControls(onData: (record: EnergyRecord) => void): DataSourceControls {
     this.onDataCallback = onData;
-
-    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const self = this;
 
     const start = async () => {
@@ -76,7 +46,7 @@ export class UKDaleSampleSource implements EnergyDataSource {
           self.onDataCallback?.(self.liveData[self.currentIndex]);
           self.currentIndex++;
         } else {
-          self.currentIndex = 0; // loop for continuous demo
+          self.currentIndex = 0;
         }
       }, self.SIMULATION_INTERVAL);
     };
@@ -106,16 +76,134 @@ export class UKDaleSampleSource implements EnergyDataSource {
     };
 
     return {
-      start,
-      pause,
-      reset,
-      getNextRecord,
-      get isSimulating() {
-        return self._isPlaying;
-      },
+      start, pause, reset, getNextRecord,
+      get isSimulating() { return self._isPlaying; },
     };
   }
 }
 
-// Export a singleton — shared across the entire app
-export const dataSource = new UKDaleSampleSource();
+export class ESP32LiveSource implements EnergyDataSource {
+  private eventSource: EventSource | null = null;
+  private onDataCallback: ((record: EnergyRecord) => void) | null = null;
+  private _isPlaying = false;
+
+  public async getHistoricalData(): Promise<EnergyRecord[]> {
+    return []; // No historical data for live ESP32 yet
+  }
+
+  public getLiveControls(onData: (record: EnergyRecord) => void): DataSourceControls {
+    this.onDataCallback = onData;
+    const self = this;
+
+    const start = () => {
+      if (self._isPlaying) return;
+      self._isPlaying = true;
+      self.eventSource = new EventSource('http://localhost:8000/api/stream');
+      
+      self.eventSource.onopen = () => {
+        // Send a dummy record to establish connected state if needed
+        self.onDataCallback?.({
+          timestamp: new Date().toISOString(),
+          appliances: [],
+          connectionState: 'connected'
+        });
+      };
+
+      self.eventSource.onmessage = (event) => {
+        try {
+          const record: EnergyRecord = JSON.parse(event.data);
+          record.connectionState = 'connected';
+          self.onDataCallback?.(record);
+        } catch (e) {
+          console.error('[ESP32LiveSource] Parse error:', e);
+        }
+      };
+      
+      self.eventSource.onerror = (e) => {
+        console.error('[ESP32LiveSource] SSE error:', e);
+        self.onDataCallback?.({
+          timestamp: new Date().toISOString(),
+          appliances: [],
+          connectionState: 'disconnected'
+        });
+        self.eventSource?.close();
+        self._isPlaying = false;
+      };
+    };
+
+    const pause = () => {
+      self._isPlaying = false;
+      if (self.eventSource) {
+        self.eventSource.close();
+        self.eventSource = null;
+      }
+      self.onDataCallback?.({
+        timestamp: new Date().toISOString(),
+        appliances: [],
+        connectionState: 'disconnected'
+      });
+    };
+
+    const reset = () => {
+      pause();
+    };
+
+    const getNextRecord = async (): Promise<EnergyRecord | null> => null;
+
+    return {
+      start, pause, reset, getNextRecord,
+      get isSimulating() { return self._isPlaying; },
+    };
+  }
+}
+
+class DataSourceManager {
+  private ukdale = new UKDaleSampleSource();
+  private esp32 = new ESP32LiveSource();
+  
+  public mode: 'ukdale' | 'esp32' = 'ukdale';
+  private currentControls: DataSourceControls | null = null;
+  private onDataCallback: ((record: EnergyRecord) => void) | null = null;
+
+  public setMode(newMode: 'ukdale' | 'esp32') {
+    if (this.mode === newMode) return;
+    
+    const wasPlaying = this.currentControls?.isSimulating;
+    if (this.currentControls) {
+      this.currentControls.pause();
+    }
+    
+    this.mode = newMode;
+    
+    if (this.onDataCallback) {
+      this.currentControls = this.getActiveSource().getLiveControls(this.onDataCallback);
+      if (wasPlaying) {
+        this.currentControls.start();
+      }
+    }
+  }
+
+  private getActiveSource(): EnergyDataSource {
+    return this.mode === 'esp32' ? this.esp32 : this.ukdale;
+  }
+
+  public async getHistoricalData(): Promise<EnergyRecord[]> {
+    return this.ukdale.getHistoricalData(); // Use UKDale historical for analysis tab
+  }
+
+  public getLiveControls(onData: (record: EnergyRecord) => void): DataSourceControls {
+    this.onDataCallback = onData;
+    this.currentControls = this.getActiveSource().getLiveControls(onData);
+    
+    const self = this;
+    return {
+      start: () => self.currentControls?.start(),
+      pause: () => self.currentControls?.pause(),
+      reset: () => self.currentControls?.reset(),
+      getNextRecord: () => self.currentControls?.getNextRecord() ?? Promise.resolve(null),
+      get isSimulating() { return self.currentControls?.isSimulating ?? false; },
+    };
+  }
+}
+
+export const dataSource = new DataSourceManager();

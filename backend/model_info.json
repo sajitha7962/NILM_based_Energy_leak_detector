@@ -1,0 +1,14 @@
+{
+  "model": "Random Forest",
+  "dataset": "UK-DALE + synthetic LED bulb",
+  "evaluation_type": "time_based_test_split",
+  "classes": 10,
+  "features": 10,
+  "accuracy": 100.0,
+  "precision_macro": 100.0,
+  "recall_macro": 100.0,
+  "f1_macro": 100.0,
+  "last_trained": "2026-09-20",
+  "total_samples": 5211,
+  "led_bulb_samples": 1500
+}

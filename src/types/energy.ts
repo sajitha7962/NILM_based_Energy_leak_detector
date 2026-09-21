@@ -18,8 +18,10 @@ export interface EnergyRecord {
   aggregateEnergyKwh?: number;
   appliances: ApplianceData[];
   voltage?: number;
-  currentAmps?: number;
-  powerFactor?: number;
+  current?: number;
+  power?: number;
+  energy?: number;
+  connectionState?: 'connected' | 'disconnected' | 'warming_up';
 }
 
 export interface DataSourceControls {

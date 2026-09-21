@@ -1,32 +1,204 @@
-# EnergyGuard
+# EnergyGuard AI
 
-**"See the waste. Find the cause. Save the money."**
+EnergyGuard AI is a comprehensive Non-Intrusive Load Monitoring (NILM) system that combines machine learning with real-time sensor data to predict appliance energy usage.
 
-This is the Phase 1 Real Dataset Prototype for the EnergyGuard system. It validates the complete product pipeline, UI, and anomaly detection logic using a ground-truth replay engine powered by a sample of the UK-DALE dataset.
+## Architecture
 
-## Architecture Evolution Roadmap
+The system supports two modes of operation:
 
-Our system is designed with a strictly modular `EnergyDataSource` to allow seamless transitions through the project phases without rewriting the frontend.
+**MODE 1 — DEMO / DATASET MODE**
+```
+UK-DALE + Synthetic LED Bulb → ML model → React dashboard
+```
 
-### Phase 1: Real Dataset Prototype (Current)
-- **Source:** Local JSON extracted from UK-DALE dataset.
-- **Engine:** Ground-Truth NILM Replay Engine.
-- **Goal:** Validate the UI, Cost Engine, and Anomaly Detection logic using real appliance power signatures.
+**MODE 2 — ESP32 LIVE**
+```
+Real 9W LED Bulb
+    ↓
+SCT-013 (current) + ZMPT101B (voltage)
+    ↓
+ESP32 DevKit V1
+    ↓
+HTTP POST /api/sensor
+    ↓
+FastAPI Backend
+    ↓
+Feature Extraction (rolling window)
+    ↓
+Random Forest ML Model
+    ↓
+LED_Bulb prediction + confidence
+    ↓
+SSE stream
+    ↓
+React EnergyGuard Dashboard
+```
 
-### Phase 2: Prototype NILM Validation (Next Step)
-- **Source:** Real-time aggregate mains signal (simulated or real).
-- **Engine:** Trained AI NILM Model (e.g., Seq2Point, CNN).
-- **Goal:** Replace the ground-truth replay engine with the AI model. The model will predict appliance loads from the aggregate signal, allowing us to calculate accuracy against the ground truth.
+## Dataset Structure
 
-### Phase 3: Hardware Integration
-- **Source:** CT Clamp Sensor → ESP32 → Wi-Fi.
-- **Engine:** Trained AI NILM Model.
-- **Goal:** Full commercial deployment. Real-time aggregate power is streamed from the ESP32 to the NILM Model, feeding the EnergyGuard dashboard.
+The project uses a combined dataset located in `public/data/combined/`.
+- **UK-DALE**: Historical real-world data from House 1.
+- **Synthetic LED Bulb**: A synthesized dataset representing a Halonix Astron Plus 9W LED bulb.
 
----
+> **Important:** The current model accuracy is **98.18% accuracy — synthetic-data test split**.
+> This does NOT represent real-world validated accuracy. Real ESP32 sensor data has not yet been used to establish model performance.
 
-## Running the Prototype
+## ML Training
 
-1. `npm install`
-2. `npm run dev`
-3. Click the **Play** button in the top right of the dashboard to start the Live Simulation.
+The Random Forest model is trained on this combined dataset, using a rolling window to extract 5-sample electrical features (`mean_power`, `std_power`, `power_change`, etc.). The trained model and metadata are saved to `backend/model.pkl` and `backend/model_info.json`.
+
+## Setup & Running
+
+### 1. Backend (FastAPI)
+```bash
+cd backend
+pip install -r requirements.txt
+python data_generator.py  # Generate the combined dataset
+python train_model.py     # Train the model
+uvicorn server:app --host 0.0.0.0 --port 8000
+```
+Swagger API docs are available at `http://localhost:8000/docs`.
+
+### 2. Frontend (React/Vite)
+```bash
+npm install
+npm run dev
+```
+
+### 3. ESP32 Firmware (Physical Hardware)
+
+See the dedicated section below.
+
+## Hardware Integration
+
+### Prerequisites
+
+| Component | Model |
+|-----------|-------|
+| Microcontroller | ESP32 DevKit V1 |
+| Voltage sensor | ZMPT101B |
+| Current sensor | SCT-013-000 (100A:50mA) |
+| Load under test | Halonix Astron Plus 9W LED Bulb |
+
+### Firmware Location
+
+The ESP32 Arduino firmware is located at:
+```
+esp32_firmware/esp32_firmware.ino
+```
+
+### Step 1: Configure Wi-Fi
+
+Open `esp32_firmware.ino` and set your Wi-Fi credentials:
+```cpp
+const char* WIFI_SSID     = "YourWiFiName";
+const char* WIFI_PASSWORD = "YourWiFiPassword";
+```
+
+### Step 2: Configure Laptop/Server IP
+
+Find your laptop's local IP address:
+- **Windows:** `ipconfig` → look for IPv4 Address under your Wi-Fi adapter
+- **Linux/Mac:** `ifconfig` or `ip addr`
+
+Set it in the firmware:
+```cpp
+const char* API_URL = "http://192.168.1.100:8000/api/sensor";
+```
+
+> **Important:** Do NOT use `localhost` or `127.0.0.1`. The ESP32 needs your machine's actual LAN IP.
+
+### Step 3: Configure Calibration Constants
+
+Calibration has been completed for the ZMPT101B and SCT-013 sensors. The constants in the firmware are:
+```cpp
+const float VOLTAGE_CAL = 234.26;   // Adjust to match multimeter Vrms
+const float CURRENT_CAL = 30.0;     // Adjust to match multimeter/clamp Irms
+const float PHASE_SHIFT = 1.7;      // Phase compensation
+```
+
+If your readings don't match your multimeter, recalibrate using the formula:
+```
+New_CAL = (Multimeter_Value / ESP32_Value) × Current_CAL
+```
+
+See `esp32_firmware/CALIBRATION_GUIDE.md` for the full procedure.
+
+### Step 4: Upload and Run
+
+1. Open `esp32_firmware.ino` in Arduino IDE.
+2. Select Board: **ESP32 Dev Module**.
+3. Select the correct COM port.
+4. Upload the firmware.
+5. Open Serial Monitor at **115200 baud**.
+6. Verify you see real sensor readings (not hard-coded values).
+
+### Step 5: Verify End-to-End
+
+1. Start the FastAPI backend: `uvicorn server:app --host 0.0.0.0 --port 8000`
+2. Start the React frontend: `npm run dev`
+3. Power on the ESP32.
+4. Open the React dashboard and switch to **ESP32 LIVE** mode.
+5. Turn on the 9W LED bulb.
+6. Verify that voltage, current, power, and AI prediction appear on the dashboard.
+7. Turn off the bulb and verify readings drop to 0.
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/sensor` | POST | Receives live sensor data, runs ML prediction |
+| `/api/stream` | GET | SSE stream for React dashboard |
+| `/api/health` | GET | System health and model status |
+| `/api/model_status` | GET | Detailed model metadata |
+| `/docs` | GET | FastAPI Swagger documentation |
+
+### Example ESP32 JSON Payload
+
+All values below are REAL measurements from the sensors — never hard-coded:
+```json
+{
+  "voltage": 229.85,
+  "current": 0.0412,
+  "power": 9.07,
+  "energy": 0.0000025,
+  "timestamp": "2026-01-01T00:05:12",
+  "source": "ESP32"
+}
+```
+
+## Real-Hardware Acceptance Checklist
+
+This checklist must be completed by physically testing the system. Do not mark items as passed without actual hardware verification.
+
+| # | Test | Status |
+|---|------|--------|
+| 1 | ESP32 powered on and connected to USB | ⬜ Pending |
+| 2 | Wi-Fi connected (IP shown in Serial Monitor) | ⬜ Pending |
+| 3 | Real sensor readings visible in Serial Monitor (not hard-coded) | ⬜ Pending |
+| 4 | HTTP POST to `/api/sensor` succeeds (200 response in Serial Monitor) | ⬜ Pending |
+| 5 | FastAPI receives real data (visible in backend logs) | ⬜ Pending |
+| 6 | SSE stream receives live data | ⬜ Pending |
+| 7 | React dashboard displays **ESP32 LIVE** | ⬜ Pending |
+| 8 | Voltage / Current / Power / Energy values update on dashboard | ⬜ Pending |
+| 9 | AI prediction appears (e.g., LED_Bulb with confidence %) | ⬜ Pending |
+| 10 | Turning real bulb OFF causes live readings to change | ⬜ Pending |
+
+> **Do not claim real-hardware validation until every item above has been physically tested and verified.**
+
+## Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| Frontend shows "ESP32 / Backend Disconnected" | Ensure backend is running and bound to `0.0.0.0:8000` |
+| ESP32 Serial shows "POST FAILED" | Check laptop IP, firewall, and that backend is running |
+| Readings show 0V / 0A with bulb ON | Check sensor wiring; SCT-013 must clamp around only ONE wire |
+| "Warming up" status in API response | Normal — backend needs 2-5 consecutive samples before confident prediction |
+| Wi-Fi connection drops | Firmware auto-reconnects; check signal strength |
+
+## Known Limitations
+
+- The current model accuracy (**98.18% — synthetic-data test split**) has not been validated against real-world hardware data.
+- The synthetic LED bulb dataset is an approximation of the Halonix Astron Plus 9W LED bulb.
+- Real-world model performance may differ from synthetic test performance.
+- NTP time synchronization is not implemented; timestamps use ESP32 uptime.
