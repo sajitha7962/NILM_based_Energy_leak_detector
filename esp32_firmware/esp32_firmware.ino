@@ -34,11 +34,11 @@ const int SCT_PIN = 35;
 //  WIFI & BACKEND CONFIGURATION
 // ==========================================
 // Replace with your local Wi-Fi credentials
-const char* WIFI_SSID     = "YOUR_WIFI_SSID";
-const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
+const char* WIFI_SSID     = "realme 14x 5G";
+const char* WIFI_PASSWORD = "sajisujin";
 
 // Replace with your Laptop/Server IP on the local Wi-Fi network (port 8000)
-const char* API_URL       = "http://10.187.172.230:8000/api/sensor";
+const char* API_URL       = "http://10.47.59.1:8000/api/sensor";
 
 // ==========================================
 //  CALIBRATION THRESHOLD

@@ -298,7 +298,31 @@ def get_demo_state():
         "state": "ON" if is_on else "OFF"
     }
 
+# =============================================================
+# SERVE REACT FRONTEND (All-in-One Deployment)
+# =============================================================
+DIST_DIR = os.path.join(os.path.dirname(BASE_DIR), 'dist')
+if os.path.exists(DIST_DIR):
+    from fastapi.staticfiles import StaticFiles
+    from starlette.responses import FileResponse
+
+    assets_dir = os.path.join(DIST_DIR, 'assets')
+    if os.path.exists(assets_dir):
+        app.mount('/assets', StaticFiles(directory=assets_dir), name='assets')
+
+    # Serve static assets or fallback to index.html for React SPA
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        # Don't intercept API routes
+        if full_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="API endpoint not found")
+        file_path = os.path.join(DIST_DIR, full_path)
+        if full_path and os.path.isfile(file_path):
+            return FileResponse(file_path)
+        return FileResponse(os.path.join(DIST_DIR, 'index.html'))
+
 if __name__ == '__main__':
     import uvicorn
-    uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("server:app", host="0.0.0.0", port=port, reload=True)
 

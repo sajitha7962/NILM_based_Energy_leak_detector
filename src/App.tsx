@@ -63,7 +63,10 @@ export default function App() {
   useEffect(() => {
     dataSource.getHistoricalData().then(setHistorical);
 
-    fetch('http://localhost:8000/api/model_status')
+    const apiBase = (typeof window !== 'undefined' && window.location.port === '5173')
+      ? 'http://localhost:8000'
+      : '';
+    fetch(`${apiBase}/api/model_status`)
       .then(r => r.json())
       .then(data => setModelInfo(data))
       .catch(e => console.error(e));

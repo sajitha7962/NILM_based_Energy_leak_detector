@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: energyguard-nilm
+    env: docker
+    plan: free
+    region: oregon
+    healthCheckPath: /api/model_status
+    envVars:
+      - key: PORT
+        value: 8000

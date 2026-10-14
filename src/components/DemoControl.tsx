@@ -9,8 +9,8 @@ interface DemoControlProps {
 export const DemoControl: React.FC<DemoControlProps> = ({ apiBaseUrl }) => {
   // Determine API base URL dynamically
   const defaultApiUrl = apiBaseUrl || 
-    (typeof window !== 'undefined' && window.location.hostname 
-      ? `http://${window.location.hostname}:8000` 
+    (typeof window !== 'undefined'
+      ? (window.location.port === '5173' ? `http://${window.location.hostname}:8000` : window.location.origin)
       : 'http://localhost:8000');
 
   const [apiUrl, setApiUrl] = useState<string>(defaultApiUrl);

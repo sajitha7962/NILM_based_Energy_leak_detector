@@ -98,7 +98,10 @@ export class ESP32LiveSource implements EnergyDataSource {
     const start = () => {
       if (self._isPlaying) return;
       self._isPlaying = true;
-      self.eventSource = new EventSource('http://localhost:8000/api/stream');
+      const apiBase = (typeof window !== 'undefined' && window.location.port === '5173')
+        ? 'http://localhost:8000'
+        : '';
+      self.eventSource = new EventSource(`${apiBase}/api/stream`);
       
       self.eventSource.onopen = () => {
         // Send a dummy record to establish connected state if needed
