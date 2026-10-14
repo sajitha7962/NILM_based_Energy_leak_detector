@@ -1,4 +1,4 @@
-import { Activity, Zap, Play, Pause, RotateCcw, Globe, User } from 'lucide-react';
+import { Activity, Zap, Play, Pause, RotateCcw, Globe, User, LogOut } from 'lucide-react';
 import { DataSourceControls } from '../types/energy';
 import { useTranslation } from 'react-i18next';
 import { cn } from '../utils/cn';
@@ -7,9 +7,11 @@ import { Chatbot } from './Chatbot';
 interface LayoutProps {
   children: React.ReactNode;
   controls: DataSourceControls | null;
+  onLogout?: () => void;
+  userEmail?: string;
 }
 
-export const Layout: React.FC<LayoutProps> = ({ children, controls }) => {
+export const Layout: React.FC<LayoutProps> = ({ children, controls, onLogout, userEmail }) => {
   const { t, i18n } = useTranslation();
   const isSimulating = controls?.isSimulating ?? false;
 
@@ -104,9 +106,21 @@ export const Layout: React.FC<LayoutProps> = ({ children, controls }) => {
                 {isSimulating ? t('layout.live', 'LIVE') : t('layout.paused', 'PAUSED')}
               </div>
 
-              {/* Profile */}
-              <div className="hidden sm:flex p-2 glass-button cursor-pointer hover:border-brand-primary/30 transition-all">
-                <User className="h-5 w-5 text-brand-text" />
+              {/* Profile & Logout */}
+              <div className="flex items-center gap-2">
+                <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 glass-button text-xs font-bold text-brand-text shadow-sm">
+                  <User className="h-4 w-4 text-brand-primary" />
+                  <span className="truncate max-w-[130px]">{userEmail || 'admin@energyguard.ai'}</span>
+                </div>
+                {onLogout && (
+                  <button
+                    onClick={onLogout}
+                    className="p-2 glass-button hover:bg-red-500/10 text-brand-text-muted hover:text-red-500 transition-colors shadow-sm"
+                    title="Sign Out"
+                  >
+                    <LogOut className="h-4 w-4" />
+                  </button>
+                )}
               </div>
             </div>
           </div>

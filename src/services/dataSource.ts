@@ -1,5 +1,77 @@
 import { EnergyDataSource, EnergyRecord, DataSourceControls } from '../types/energy';
 
+// Track the latest ESP32 hardware reading across both modes
+export interface Esp32HardwareState {
+  powerWatts: number;
+  voltage: number;
+  current: number;
+  energyKwh: number;
+  isAnomaly: boolean;
+  isolationForestScore: number;
+  anomalyReason?: string;
+  lastUpdated: number;
+  isOn: boolean;
+  isConnected: boolean;
+}
+
+export let latestEsp32HardwareState: Esp32HardwareState = {
+  powerWatts: 0,
+  voltage: 230.0,
+  current: 0.0,
+  energyKwh: 0.0,
+  isAnomaly: false,
+  isolationForestScore: 0.05,
+  lastUpdated: 0,
+  isOn: false,
+  isConnected: false,
+};
+
+export function updateEsp32HardwareReading(data: any) {
+  const power = typeof data.power === 'number' 
+    ? data.power 
+    : (typeof data.aggregatePowerWatts === 'number' ? data.aggregatePowerWatts : 0);
+  const voltage = typeof data.voltage === 'number' ? data.voltage : 229.5;
+  const current = typeof data.current === 'number' ? data.current : 0;
+  const energy = typeof data.energy === 'number' ? data.energy : 0;
+
+  latestEsp32HardwareState = {
+    powerWatts: Math.round(power * 100) / 100,
+    voltage: Math.round(voltage * 10) / 10,
+    current: Math.round(current * 10000) / 10000,
+    energyKwh: energy,
+    isAnomaly: !!data.isAnomaly,
+    isolationForestScore: typeof data.isolationForestScore === 'number' ? data.isolationForestScore : 0.05,
+    anomalyReason: data.anomalyReason,
+    lastUpdated: Date.now(),
+    isOn: power > 0.5,
+    isConnected: true,
+  };
+}
+
+// Background poller to keep ESP32 state fresh even in Dataset Mode
+let pollInterval: ReturnType<typeof setInterval> | null = null;
+function startHardwareBackgroundPoller() {
+  if (pollInterval || typeof window === 'undefined') return;
+  const apiBase = window.location.port === '5173' ? 'http://localhost:8000' : '';
+
+  const poll = async () => {
+    try {
+      const res = await fetch(`${apiBase}/api/sensor/latest`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.has_data && json.reading) {
+          updateEsp32HardwareReading(json.reading);
+        }
+      }
+    } catch {
+      // Backend not yet reachable or silent fallback
+    }
+  };
+
+  poll();
+  pollInterval = setInterval(poll, 2000);
+}
+
 export class UKDaleSampleSource implements EnergyDataSource {
   private liveData: EnergyRecord[] = [];
   private historicalData: EnergyRecord[] = [];
@@ -13,6 +85,7 @@ export class UKDaleSampleSource implements EnergyDataSource {
 
   constructor() {
     this.dataReady = this.loadData();
+    startHardwareBackgroundPoller();
   }
 
   private async loadData(): Promise<void> {
@@ -33,6 +106,45 @@ export class UKDaleSampleSource implements EnergyDataSource {
     return this.historicalData;
   }
 
+  private getMergedRecord(baseRecord: EnergyRecord): EnergyRecord {
+    const record: EnergyRecord = JSON.parse(JSON.stringify(baseRecord));
+    const hw = latestEsp32HardwareState;
+
+    // Is the hardware active or recently updated?
+    const isRecent = hw.isConnected && (Date.now() - hw.lastUpdated < 60000);
+    const bulbWatts = isRecent ? hw.powerWatts : 0.0;
+    const bulbIsOn = bulbWatts > 0.5;
+
+    // Create live appliance item representing the physical Halonix LED bulb
+    const bulbAppliance = {
+      id: 'esp32_live_bulb',
+      name: 'Halonix 9W LED Bulb',
+      powerWatts: bulbWatts,
+      baselinePowerWatts: 9,
+      confidence: bulbIsOn ? 0.98 : 0.95,
+      isLiveHardware: true,
+      source: 'ESP32 Live Hardware',
+      isAnomaly: isRecent ? hw.isAnomaly : false,
+      isolationForestScore: isRecent ? hw.isolationForestScore : 0.05,
+      anomalyReason: isRecent ? hw.anomalyReason : undefined,
+      healthStatus: (isRecent && hw.isAnomaly) ? 'critical' as const : 'healthy' as const,
+    };
+
+    // Prepend the live bulb appliance so it is prominent alongside UK-DALE appliances
+    record.appliances = [bulbAppliance, ...record.appliances];
+
+    // Merge live bulb power into the house's aggregate power
+    record.aggregatePowerWatts = Math.round(((record.aggregatePowerWatts ?? 0) + bulbWatts) * 10) / 10;
+
+    // Add hardware electrical context
+    if (bulbIsOn) {
+      record.voltage = hw.voltage;
+      record.current = hw.current;
+    }
+
+    return record;
+  }
+
   public getLiveControls(onData: (record: EnergyRecord) => void): DataSourceControls {
     this.onDataCallback = onData;
     const self = this;
@@ -43,7 +155,8 @@ export class UKDaleSampleSource implements EnergyDataSource {
       self._isPlaying = true;
       self.timer = setInterval(() => {
         if (self.currentIndex < self.liveData.length) {
-          self.onDataCallback?.(self.liveData[self.currentIndex]);
+          const raw = self.liveData[self.currentIndex];
+          self.onDataCallback?.(self.getMergedRecord(raw));
           self.currentIndex++;
         } else {
           self.currentIndex = 0;
@@ -63,14 +176,14 @@ export class UKDaleSampleSource implements EnergyDataSource {
       pause();
       self.currentIndex = 0;
       if (self.liveData.length > 0) {
-        self.onDataCallback?.(self.liveData[0]);
+        self.onDataCallback?.(self.getMergedRecord(self.liveData[0]));
       }
     };
 
     const getNextRecord = async (): Promise<EnergyRecord | null> => {
       await self.dataReady;
       if (self.currentIndex < self.liveData.length) {
-        return self.liveData[self.currentIndex++];
+        return self.getMergedRecord(self.liveData[self.currentIndex++]);
       }
       return null;
     };
@@ -116,6 +229,7 @@ export class ESP32LiveSource implements EnergyDataSource {
         try {
           const record: EnergyRecord = JSON.parse(event.data);
           record.connectionState = 'connected';
+          updateEsp32HardwareReading(record);
           self.onDataCallback?.(record);
         } catch (e) {
           console.error('[ESP32LiveSource] Parse error:', e);

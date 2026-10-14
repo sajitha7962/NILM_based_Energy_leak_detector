@@ -8,19 +8,45 @@ interface LoginProps {
 }
 
 export function Login({ onLogin }: LoginProps) {
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState('admin@energyguard.ai');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    
-    // Simulate network request
-    setTimeout(() => {
+    setErrorMessage(null);
+
+    const apiBase = (typeof window !== 'undefined' && window.location.port === '5173')
+      ? 'http://localhost:8000'
+      : '';
+
+    try {
+      const res = await fetch(`${apiBase}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim(), password }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || 'Invalid email or password. Access denied.');
+      }
+
+      const data = await res.json();
+      if (data.token) {
+        localStorage.setItem('energyguard_token', data.token);
+        if (data.user) {
+          localStorage.setItem('energyguard_user', JSON.stringify(data.user));
+        }
+        onLogin();
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Authentication failed. Please check your credentials.');
+    } finally {
       setIsLoading(false);
-      onLogin();
-    }, 1200);
+    }
   };
 
   return (
@@ -49,6 +75,17 @@ export function Login({ onLogin }: LoginProps) {
             <h1 className="text-3xl font-black text-brand-text mb-2 text-center">EnergyGuard AI</h1>
             <p className="text-brand-text/60 font-medium text-center text-sm">Sign in to your intelligent energy dashboard</p>
           </div>
+
+          {errorMessage && (
+            <motion.div 
+              initial={{ opacity: 0, y: -10 }} 
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-600 text-sm font-semibold flex items-center gap-3"
+            >
+              <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
+              <span>{errorMessage}</span>
+            </motion.div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
@@ -129,7 +166,17 @@ export function Login({ onLogin }: LoginProps) {
             </button>
           </form>
           
-          <div className="mt-8 pt-6 border-t border-brand-primary/10 flex justify-center items-center text-xs font-medium text-brand-text/50">
+          <div className="mt-6 p-3.5 bg-black/5 rounded-xl border border-black/5 text-center text-xs text-brand-text/70 space-y-1">
+            <div className="font-bold text-brand-text flex items-center justify-center gap-1.5">
+              <Lock className="h-3.5 w-3.5 text-brand-primary" />
+              <span>Authorized Admin Credentials:</span>
+            </div>
+            <div className="font-mono text-[11px] text-brand-primary select-all font-semibold">
+              admin@energyguard.ai / EnergyGuard@2026!
+            </div>
+          </div>
+
+          <div className="mt-6 pt-5 border-t border-brand-primary/10 flex justify-center items-center text-xs font-medium text-brand-text/50">
             <ShieldCheck className="h-4 w-4 mr-1.5" />
             End-to-End Encrypted Authentication
           </div>

@@ -31,7 +31,22 @@ type Tab = 'dashboard' | 'appliances' | 'live' | 'alerts' | 'analysis' | 'settin
 
 export default function App() {
   const { t } = useTranslation();
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('energyguard_token') !== null;
+    }
+    return false;
+  });
+
+  const userEmail = typeof window !== 'undefined'
+    ? (JSON.parse(localStorage.getItem('energyguard_user') || '{}').email || 'admin@energyguard.ai')
+    : 'admin@energyguard.ai';
+
+  const handleLogout = () => {
+    localStorage.removeItem('energyguard_token');
+    localStorage.removeItem('energyguard_user');
+    setIsAuthenticated(false);
+  };
   const [liveRecord, setLiveRecord] = useState<EnergyRecord | null>(null);
   const [alerts, setAlerts] = useState<AnomalyAlert[]>([]);
   const [insights, setInsights] = useState<Insight[]>([]);
@@ -295,32 +310,42 @@ export default function App() {
       {liveRecord.appliances.slice().sort((a, b) => (b.powerWatts ?? 0) - (a.powerWatts ?? 0)).map((app) => {
         const on = (app.powerWatts ?? 0) > 0;
         return (
-          <div key={app.id} className={cn("glass-card p-6 flex flex-col justify-between transition-all hover:-translate-y-1", on ? "border-brand-primary/30 shadow-[0_4px_20px_rgba(249,115,22,0.15)]" : "border-black/5 opacity-80")}>
+          <div key={app.id} className={cn("glass-card p-6 flex flex-col justify-between transition-all hover:-translate-y-1 relative overflow-hidden", app.isLiveHardware && "ring-1 ring-emerald-500/40", on ? "border-brand-primary/30 shadow-[0_4px_20px_rgba(249,115,22,0.15)]" : "border-black/5 opacity-80")}>
             <div>
               <div className="flex justify-between items-start mb-4">
                 <div className={cn("p-3 rounded-2xl border", on ? "bg-gradient-to-br from-brand-primary to-brand-accent text-white shadow-[0_4px_10px_rgba(249,115,22,0.3)] border-brand-primary/20" : "bg-white/50 border-black/5 text-brand-text-muted")}>
                   <Cpu className="h-6 w-6" />
                 </div>
-                <div className={cn("px-2.5 py-1 rounded-full text-[10px] font-bold border", on ? "bg-brand-success/10 text-brand-success border-brand-success/20 shadow-sm" : "bg-black/5 text-brand-text-muted border-black/5")}>
-                  {on ? t('appliances.active', 'ACTIVE') : t('appliances.standby', 'STANDBY')}
+                <div className="flex items-center gap-1.5">
+                  {app.isLiveHardware && (
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-600 border border-emerald-500/30 flex items-center gap-1 shadow-sm">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      LIVE ESP32
+                    </span>
+                  )}
+                  <div className={cn("px-2.5 py-1 rounded-full text-[10px] font-bold border", on ? "bg-brand-success/10 text-brand-success border-brand-success/20 shadow-sm" : "bg-black/5 text-brand-text-muted border-black/5")}>
+                    {on ? t('appliances.active', 'ACTIVE') : t('appliances.standby', 'STANDBY')}
+                  </div>
                 </div>
               </div>
-              <h3 className="text-lg font-black text-brand-text">{app.name}</h3>
+              <h3 className="text-lg font-black text-brand-text flex items-center gap-2">
+                <span>{app.name}</span>
+              </h3>
               
               <div className="mt-4 space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-brand-text-muted font-semibold">{t('appliances.powerDraw', 'Power Draw')}</span>
                   <span className={cn("font-black", on ? "text-brand-primary" : "text-brand-text-muted")}>{app.powerWatts} W</span>
                 </div>
-                {dataSourceMode === 'esp32' && liveRecord?.voltage !== undefined && (
+                {(dataSourceMode === 'esp32' || app.isLiveHardware) && liveRecord?.voltage !== undefined && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-brand-text-muted font-semibold">Voltage</span>
+                    <span className="text-brand-text-muted font-semibold">Sensor Voltage</span>
                     <span className={cn("font-bold", on ? "text-brand-text" : "text-brand-text-muted")}>{liveRecord.voltage} V</span>
                   </div>
                 )}
-                {dataSourceMode === 'esp32' && liveRecord?.current !== undefined && (
+                {(dataSourceMode === 'esp32' || app.isLiveHardware) && liveRecord?.current !== undefined && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-brand-text-muted font-semibold">Current</span>
+                    <span className="text-brand-text-muted font-semibold">Sensor Current</span>
                     <span className={cn("font-bold", on ? "text-brand-text" : "text-brand-text-muted")}>{liveRecord.current} A</span>
                   </div>
                 )}
@@ -578,7 +603,7 @@ export default function App() {
   }
 
   return (
-    <Layout controls={controlsRef.current}>
+    <Layout controls={controlsRef.current} onLogout={handleLogout} userEmail={userEmail}>
       <div className="flex justify-between items-center mb-8 flex-wrap gap-4">
         {/* Tabs */}
         <div className="overflow-x-auto">
@@ -604,14 +629,15 @@ export default function App() {
           <button 
             onClick={() => toggleMode('ukdale')}
             className={cn("px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2", dataSourceMode === 'ukdale' ? "bg-white text-brand-primary shadow-sm ring-1 ring-black/5" : "text-brand-text/60 hover:bg-white/50")}
+            title="UK-DALE Household Appliances with Live ESP32 Hardware Merged"
           >
-            ⚪ DEMO / DATASET MODE
+            <span>⚡ DATASET + ESP32 HYBRID</span>
           </button>
           <button 
             onClick={() => toggleMode('esp32')}
             className={cn("px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2", dataSourceMode === 'esp32' ? "bg-green-100 text-green-700 shadow-sm ring-1 ring-black/5" : "text-brand-text/60 hover:bg-white/50")}
           >
-            🟢 ESP32 LIVE
+            🟢 ESP32 PURE LIVE
           </button>
         </div>
       </div>

@@ -12,6 +12,8 @@ export interface ApplianceData {
   healthStatus?: 'healthy' | 'warning' | 'critical';
   confidence?: number;
   estimatedCost?: number;
+  isLiveHardware?: boolean;
+  source?: string;
 }
 
 export interface EnergyRecord {

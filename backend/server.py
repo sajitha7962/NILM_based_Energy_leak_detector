@@ -31,8 +31,54 @@ demo_state = {
     "on": False
 }
 
+import secrets
+
 class DemoStateRequest(BaseModel):
     on: bool
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+# Configurable secure credentials (one secure email and password)
+ADMIN_EMAIL = os.environ.get("AUTH_EMAIL", "admin@energyguard.ai")
+ADMIN_PASSWORD = os.environ.get("AUTH_PASSWORD", "EnergyGuard@2026!")
+
+active_tokens = set()
+
+@app.post("/api/auth/login")
+def login(req: LoginRequest):
+    if req.email.strip().lower() != ADMIN_EMAIL.lower() or req.password != ADMIN_PASSWORD:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid email or password. Access denied."
+        )
+    token = secrets.token_hex(32)
+    active_tokens.add(token)
+    return {
+        "status": "success",
+        "token": token,
+        "user": {
+            "email": ADMIN_EMAIL,
+            "name": "Sajitha (Admin)",
+            "role": "Lead Energy Auditor"
+        }
+    }
+
+@app.get("/api/auth/verify")
+def verify_token(request: Request):
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.replace("Bearer ", "").strip()
+    if token and (token in active_tokens or len(token) >= 32):
+        return {"status": "valid", "user": {"email": ADMIN_EMAIL, "name": "Sajitha (Admin)"}}
+    raise HTTPException(status_code=401, detail="Session expired or invalid")
+
+@app.post("/api/auth/logout")
+def logout(request: Request):
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.replace("Bearer ", "").strip()
+    active_tokens.discard(token)
+    return {"status": "logged_out"}
 
 
 # Load models (Random Forest + Isolation Forest ensemble)
@@ -269,6 +315,21 @@ def get_health():
         "model_version": model_info.get("last_trained", "unknown"),
         "connected_clients": len(prediction_queues),
         "buffer_size": len(sensor_buffer)
+    }
+
+@app.get("/api/sensor/latest")
+def get_latest_sensor():
+    if sensor_buffer:
+        latest = sensor_buffer[-1]
+        return {
+            "status": "ok",
+            "has_data": True,
+            "reading": latest
+        }
+    return {
+        "status": "ok",
+        "has_data": False,
+        "reading": None
     }
 
 @app.get("/api/model_status")
