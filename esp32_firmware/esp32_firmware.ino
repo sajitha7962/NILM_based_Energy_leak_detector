@@ -27,18 +27,19 @@
 
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 
 const int SCT_PIN = 35;
 
 // ==========================================
 //  WIFI & BACKEND CONFIGURATION
 // ==========================================
-// Replace with your local Wi-Fi credentials
+// Replace with your local Wi-Fi credentials (can be ANY Wi-Fi now!)
 const char* WIFI_SSID     = "realme 14x 5G";
 const char* WIFI_PASSWORD = "sajisujin";
 
-// Replace with your Laptop/Server IP on the local Wi-Fi network (port 8000)
-const char* API_URL       = "http://10.47.59.1:8000/api/sensor";
+// Render Cloud Backend URL (HTTPS)
+const char* API_URL       = "https://energyguard-nilm.onrender.com/api/sensor";
 
 // ==========================================
 //  CALIBRATION THRESHOLD
@@ -157,10 +158,13 @@ void loop() {
   if (now - lastPostTime >= 2000) {
     lastPostTime = now;
 
+    WiFiClientSecure client;
+    client.setInsecure(); // Required for Render HTTPS without local root certs
+
     HTTPClient http;
-    http.begin(API_URL);
+    http.begin(client, API_URL);
     http.addHeader("Content-Type", "application/json");
-    http.setTimeout(3000);
+    http.setTimeout(5000);
 
     // Build timestamp from uptime
     unsigned long uptimeSec = (now - bootTime) / 1000;
